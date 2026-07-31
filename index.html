@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0D1B2A">
+  <title>MDS인텔리전스 사전인터뷰</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 1 · 메인 / 정보 입력
+══════════════════════════════════════════════ -->
+<div id="screen-main" class="screen active">
+  <div class="main-wrap">
+
+    <div class="header">
+      <div class="logo-banner">
+        <img src="mds-logo.png" alt="MDS인텔리전스" class="header-logo">
+      </div>
+      <h1>소프트웨어검증팀<br>사전인터뷰</h1>
+    </div>
+
+    <!-- 지원자 정보 입력 -->
+    <div class="card form-card">
+      <div class="form-group">
+        <label for="inp-name">이름</label>
+        <input id="inp-name" type="text" placeholder="홍길동" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="inp-birth">생년월일 <span class="hint">(숫자 8자리)</span></label>
+        <input id="inp-birth" type="text" placeholder="19900101"
+               maxlength="8" inputmode="numeric" pattern="[0-9]{8}">
+      </div>
+      <div class="form-group">
+        <label for="inp-phone">전화번호</label>
+        <input id="inp-phone" type="tel" placeholder="01012345678" inputmode="tel">
+      </div>
+      <button id="btn-save" class="btn btn-save">저장</button>
+      <div id="save-msg" class="save-msg"></div>
+    </div>
+
+    <!-- 안내 (서버 /api/config 에서 동적 로드, 미연결 시 기본값 표시) -->
+    <div id="info-box" class="info-box">
+      <p>📋 질문은 <strong>여러 가지</strong>이며, 각 항목당 <strong>10분 내외</strong>의 시간이 필요합니다.</p>
+      <p>⚠️ 시작버튼을 누르면 <strong>중단 없이 제출</strong>되므로 신중하게 눌러주세요.</p>
+    </div>
+
+    <!-- 개인정보 수집 동의 -->
+    <div class="consent-box">
+      <div class="consent-text">
+        <p class="consent-title">개인정보 수집 · 이용에 대한 동의</p>
+        <p>MDS인텔리전스(이하 "회사")는 채용 사전인터뷰 진행을 위하여 아래와 같이 개인정보를 수집 · 이용합니다.</p>
+        <ul>
+          <li><strong>수집 항목:</strong> 이름, 생년월일, 전화번호, 인터뷰 영상 및 음성 녹화 데이터</li>
+          <li><strong>수집 목적:</strong> 채용 전형 진행 및 평가</li>
+          <li><strong>보유 기간:</strong> 채용 절차 종료 후 6개월 이내 파기</li>
+        </ul>
+        <p class="consent-notice">※ 개인정보 수집 · 이용에 동의하지 않을 권리가 있으며, 동의 거부 시 인터뷰 진행이 제한될 수 있습니다.</p>
+      </div>
+      <label class="consent-check-label" for="chk-consent">
+        <input type="checkbox" id="chk-consent">
+        <span>위 내용을 확인하였으며, 개인정보 수집 · 이용에 <strong>동의합니다</strong>.</span>
+      </label>
+    </div>
+
+    <!-- 생체정보(민감정보) 수집 동의 -->
+    <div class="consent-box">
+      <div class="consent-text">
+        <p class="consent-title">생체정보 수집 · 이용에 대한 동의 (민감정보)</p>
+        <p>본 인터뷰에서는 영상 · 음성으로부터 아래의 생체정보를 수집 · 분석할 수 있습니다.</p>
+        <ul>
+          <li><strong>수집 항목:</strong> 얼굴 특징점(표정 · 시선 · 머리 움직임) 및 음성 특징(말속도 · 음색 등) 분석 데이터</li>
+          <li><strong>수집 목적:</strong> 인터뷰 응답에 대한 보조 분석(전달력 · 태도 등 참고 지표)</li>
+          <li><strong>보유 기간:</strong> 채용 절차 종료 후 6개월 이내 파기</li>
+        </ul>
+        <p class="consent-notice">※ 생체정보는 민감정보로서 별도의 동의가 필요하며, 동의하지 않을 권리가 있습니다.</p>
+      </div>
+      <label class="consent-check-label" for="chk-consent-bio">
+        <input type="checkbox" id="chk-consent-bio">
+        <span>위 내용을 확인하였으며, 생체정보 수집 · 이용에 <strong>동의합니다</strong>.</span>
+      </label>
+    </div>
+
+    <!-- 버튼 영역 -->
+    <div class="action-area">
+      <div class="test-wrap">
+        <button id="btn-test" class="btn btn-outline">🎥 카메라 / 마이크 테스트</button>
+        <p class="sub-note">* 테스트 영상은 제출되지 않습니다</p>
+      </div>
+      <button id="btn-start" class="btn btn-primary" disabled>인터뷰 시작 →</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 2 · 테스트 녹화 (10초 카운트)
+══════════════════════════════════════════════ -->
+<div id="screen-test" class="screen">
+  <div class="cam-wrap">
+    <video id="vid-test-live" autoplay muted playsinline webkit-playsinline></video>
+    <div class="cam-overlay">
+      <p class="overlay-msg">테스트 중입니다. 카메라와 마이크를 확인해보세요.</p>
+      <div id="test-count" class="count-big">10</div>
+      <div class="rec-badge"><span class="rec-dot"></span>REC</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREEN 3 · 테스트 재생
+══════════════════════════════════════════════ -->
+<div id="screen-test-play" class="screen dark-center">
+  <div class="play-card">
+    <h2>테스트 녹화 완료</h2>
+    <div class="play-video-wrap">
+      <video id="vid-test-pb" playsinline webkit-playsinline></video>
+      <div id="play-overlay" class="play-overlay">
+        <button id="btn-play-test" class="play-circle-btn">▶</button>
+      </div>
+    </div>
+    <div id="play-after" class="play-after" style="display:none">
+      <button id="btn-replay"    class="btn btn-outline">↺ 다시 재생</button>
+      <button id="btn-retest"    class="btn btn-secondary">↩ 테스트 다시하기</button>
+      <button id="btn-back-main" class="btn btn-primary">인터뷰 시작 →</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCREENS 4–N · 질문 화면 (app.js에서 동적 생성)
+══════════════════════════════════════════════ -->
+
+
+<!-- ═══════════════════════════════════════════
+     완료
+══════════════════════════════════════════════ -->
+<div id="screen-complete" class="screen dark-center">
+  <div class="msg-card">
+    <div class="icon-big">🎉</div>
+    <h2>인터뷰 완료</h2>
+    <p>
+      고생많으셨습니다.<br><br>
+      제출해주시는 과제 결과와 사전인터뷰를 바탕으로<br>
+      <strong>일주일 내로 결과를 연락드리겠습니다.</strong><br><br>
+      감사합니다.
+    </p>
+    <div id="up-status-final" class="up-status">영상을 업로드 중입니다...</div>
+    <button id="btn-exit" class="btn btn-primary" disabled>종료</button>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
