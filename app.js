@@ -7,6 +7,17 @@
 // config.js 에서 주입된 API 서버 주소 (없으면 같은 오리진 사용)
 const API = (window.INTERVIEW_CONFIG && window.INTERVIEW_CONFIG.apiBase) || '';
 
+// 미리보기 (사전인터뷰 관리 화면의 '지원자 화면' 탭이 ?preview=1 로 연다)
+//   - 지원자 등록 · 시작 기록 · 영상 업로드를 하지 않는다 → 서버에 아무것도 남지 않는다
+//   - 질문은 연 쪽(관리 화면 = 부모 창 또는 opener)이 postMessage 로 넘긴다. 못 받으면 예시 질문
+//   - 카메라를 쓸 수 없으면(IMS 탭 안 = 보안 문맥 아님) 카메라 없이 화면만 진행한다
+const PREVIEW = new URLSearchParams(location.search).get('preview') === '1';
+const SAMPLE_QUESTIONS = [
+    { id: 'sample-1', type: 'text', durationSec: 60,
+      tts: '미리보기용 예시 질문입니다. 간단히 자기소개를 해 주세요.',
+      display: '(예시 질문) 간단히 자기소개를 해 주세요.' }
+];
+
 const App = {
     /* ── State ──────────────────────────────────── */
     applicant:        null,   // { id, name, birthdate, phone }
@@ -25,12 +36,65 @@ const App = {
     // 질문 (서버에서 동적 로드)
     config:           null,   // { teamName, questionCount, mainNotices }
     qList:            null,   // 질문 배열 (resolved)
+    previewQs:        null,   // 미리보기: 관리 화면이 넘겨 준 질문
 
     /* ── Init ───────────────────────────────────── */
     init() {
         this._bindAll();
         this._loadVoices();
         this._loadConfig();
+        if (PREVIEW) this._initPreview();
+    },
+
+    /* ── 미리보기 ───────────────────────────────── */
+    _initPreview() {
+        document.body.classList.add('is-preview');
+        const tag = document.createElement('div');
+        tag.id = 'preview-tag';
+        tag.className = 'preview-tag';
+        tag.textContent = '미리보기 · 저장되지 않음';
+        document.body.appendChild(tag);
+
+        const openers = [window.parent !== window ? window.parent : null, window.opener].filter(Boolean);
+        window.addEventListener('message', ev => {
+            const d = ev.data;
+            if (!d || d.type !== 'mds-pi-preview-questions' || !openers.includes(ev.source)) return;
+            const qs = this._cleanQuestions(d.questions);
+            if (!qs.length) return;
+            this.previewQs = qs;
+            // 이미 '저장'을 눌렀으면 받은 질문으로 다시 만든다 (인터뷰 진행 중이면 그대로)
+            const onMain = document.getElementById('screen-main').classList.contains('active');
+            if (this.applicant && onMain) { this.qList = qs; this._buildScreens(); this._previewMsg(); }
+        });
+        // 관리 화면에 '미리보기 지원 판' 임을 알리고 질문을 달라고 한다 (보내는 내용 없음)
+        openers.forEach(w => { try { w.postMessage({ type: 'mds-pi-preview-ready' }, '*'); } catch {} });
+    },
+
+    _cleanQuestions(list) {
+        if (!Array.isArray(list)) return [];
+        const str = (v, n) => String(v == null ? '' : v).slice(0, n);
+        return list.slice(0, 20).map((q, i) => {
+            q = q || {};
+            const dur = Math.max(10, Math.min(3600, parseInt(q.durationSec, 10) || 600));
+            return q.type === 'code'
+                ? { id: str(q.id || `q${i + 1}`, 50), type: 'code', tts: str(q.tts, 2000), durationSec: dur,
+                    questionId: str(q.questionId, 100), title: str(q.title, 500), code: str(q.code, 20000) }
+                : { id: str(q.id || `q${i + 1}`, 50), type: 'text', tts: str(q.tts, 2000), display: str(q.display, 2000), durationSec: dur };
+        });
+    },
+
+    _previewMsg() {
+        const msg = document.getElementById('save-msg');
+        msg.textContent = this.previewQs
+            ? `✓ 미리보기 — 저장하지 않았습니다 (질문 ${this.qList.length}개)`
+            : '✓ 미리보기 — 저장하지 않았습니다 (예시 질문: 관리 화면에서 열면 실제 질문이 보입니다)';
+        msg.className = 'save-msg ok';
+    },
+
+    _previewNoCam() {
+        document.body.classList.add('preview-nocam');
+        const tag = document.getElementById('preview-tag');
+        if (tag) tag.textContent = '미리보기 · 저장되지 않음 · 카메라 없이 진행';
     },
 
     /* ── 공개 설정 로드 (페이지 초기화 시) ──────────── */
@@ -213,6 +277,17 @@ const App = {
     /* ── Camera / Mic ───────────────────────────── */
     async getStream() {
         this._releaseStream();
+        if (PREVIEW) {
+            // 미리보기: 카메라를 못 쓰면(IMS 탭 안 등) 카메라 없이 진행한다
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { this._previewNoCam(); return null; }
+            try {
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: { echoCancellation: true, noiseSuppression: true }
+                });
+                return this.stream;
+            } catch (err) { console.warn('미리보기: 카메라 없이 진행', err && err.name); this._previewNoCam(); return null; }
+        }
         const s = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: { echoCancellation: true, noiseSuppression: true }
@@ -245,6 +320,7 @@ const App = {
 
     startRec(stream) {
         this.chunks = [];
+        if (!stream) { this.recorder = null; return; }   // 미리보기 · 카메라 없음
         const mime = this._mimeType();
         this.recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
         this.recorder.ondataavailable = e => {
@@ -343,6 +419,10 @@ const App = {
 
     /* ── Upload ─────────────────────────────────── */
     upload(blob, qNum, transcript, onProgress) {
+        if (PREVIEW) {   // 미리보기: 올리지 않는다
+            if (onProgress) onProgress(1);
+            return Promise.resolve({ success: true, preview: true });
+        }
         const { name, birthdate, phone, id } = this.applicant;
         const raw  = `${name}_${birthdate}_${phone}`;
         const safe = raw.replace(/[^\w가-힣]/g, '_');
@@ -416,6 +496,16 @@ const App = {
             return;
         }
 
+        if (PREVIEW) {   // 미리보기: 서버에 등록하지 않는다
+            this.applicant      = { id: 'preview', name, birthdate, phone };
+            this.currentAttempt = null;
+            this.transcripts    = {};
+            this.qList          = this.previewQs || SAMPLE_QUESTIONS;
+            this._buildScreens();
+            this._previewMsg();
+            return;
+        }
+
         const msg = document.getElementById('save-msg');
         msg.textContent = '저장 중...';
         msg.className   = 'save-msg ing';
@@ -474,6 +564,10 @@ const App = {
 
         document.getElementById('play-overlay').style.display = 'flex';
         document.getElementById('play-after').style.display   = 'none';
+        if (PREVIEW && !blob.size) {   // 미리보기 · 카메라 없음: 재생할 것이 없으니 바로 다음 버튼
+            document.getElementById('play-overlay').style.display = 'none';
+            document.getElementById('play-after').style.display   = 'flex';
+        }
 
         this.show('test-play');
     },
@@ -524,10 +618,10 @@ const App = {
             return;
         }
 
-        // 시작 횟수 서버 기록
+        // 시작 횟수 서버 기록 (미리보기는 기록하지 않음)
         const { name, birthdate, phone, id } = this.applicant;
         this.currentAttempt = null;
-        try {
+        if (!PREVIEW) try {
             const startRes = await fetch(`${API}/api/start`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -614,7 +708,9 @@ const App = {
             this.upload(blob, n, qPrefix + text, p => {
                 st.textContent = `업로드 중... ${Math.round(p * 100)}%`;
             }).then(r => {
-                st.textContent = (r && r.success)
+                st.textContent = (r && r.preview)
+                    ? '✓ 미리보기 끝 — 영상은 업로드하지 않았습니다.'
+                    : (r && r.success)
                     ? '✓ 모든 영상이 성공적으로 업로드되었습니다.'
                     : '업로드 실패. 관리자에게 문의해주세요.';
                 st.className = (r && r.success) ? 'up-status ok' : 'up-status err';
@@ -640,7 +736,8 @@ const App = {
             this.upload(blob, n, text, p => {
                 st.textContent = `업로드 중... ${Math.round(p * 100)}%`;
             }).then(r => {
-                st.textContent = (r && r.success) ? '✓ 업로드 완료' : '업로드 실패';
+                st.textContent = (r && r.preview) ? '✓ 미리보기 — 업로드하지 않음'
+                               : (r && r.success) ? '✓ 업로드 완료' : '업로드 실패';
                 st.className   = (r && r.success) ? 'up-status ok'  : 'up-status err';
             }).catch(() => {
                 st.textContent = '업로드 실패 (네트워크를 확인해주세요)';
